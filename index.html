@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video con quiz</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+        }
+
+        #vimeo-quiz-app {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .vq-video-wrap {
+            position: relative;
+            width: 100%;
+            padding-top: 56.25%;
+            /* 16:9 */
+            border-radius: 10px;
+            overflow: hidden;
+            background: #0d0d0d;
+        }
+
+        .vq-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 10, 12, 0.72);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .vq-overlay[hidden] {
+            display: none;
+        }
+
+        .vq-modal {
+            background: #ffffff;
+            border-radius: 14px;
+            max-width: 480px;
+            width: 100%;
+            padding: 28px 26px 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            box-sizing: border-box;
+        }
+
+        .vq-eyebrow {
+            margin: 0 0 6px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #7a5cff;
+        }
+
+        .vq-question {
+            margin: 0 0 18px;
+            font-size: 19px;
+            line-height: 1.4;
+            color: #16161a;
+        }
+
+        .vq-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .vq-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border: 1.5px solid #e3e2ea;
+            border-radius: 9px;
+            cursor: pointer;
+            font-size: 15px;
+            color: #26262b;
+            transition: border-color .15s ease, background .15s ease;
+        }
+
+        .vq-option:hover {
+            border-color: #b9aeff;
+            background: #faf9ff;
+        }
+
+        .vq-option.vq-selected {
+            border-color: #7a5cff;
+            background: #f2effe;
+        }
+
+        .vq-option input {
+            accent-color: #7a5cff;
+        }
+
+        .vq-feedback {
+            font-size: 14px;
+            margin: -4px 0 14px;
+            padding: 10px 12px;
+            border-radius: 8px;
+        }
+
+        .vq-feedback.vq-ok {
+            background: #eafaf0;
+            color: #147a44;
+        }
+
+        .vq-feedback.vq-err {
+            background: #fdeeee;
+            color: #b3261e;
+        }
+
+        .vq-submit {
+            width: 100%;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 9px;
+            background: #7a5cff;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .15s ease;
+        }
+
+        .vq-submit:hover {
+            background: #6849f0;
+        }
+
+        .vq-submit:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="vimeo-quiz-app">
+        <div class="vq-video-wrap">
+            <iframe id="vq-player" src="https://player.vimeo.com/video/1204969008?title=0&byline=0&portrait=0"
+                frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen
+                style="width:100%;height:100%;position:absolute;top:0;left:0;">
+            </iframe>
+        </div>
+
+        <div id="vq-overlay" class="vq-overlay" hidden>
+            <div class="vq-modal" role="dialog" aria-modal="true" aria-labelledby="vq-question">
+                <p class="vq-eyebrow">Responde para continuar</p>
+                <h3 id="vq-question" class="vq-question"></h3>
+                <div id="vq-options" class="vq-options"></div>
+                <p id="vq-feedback" class="vq-feedback" hidden></p>
+                <button id="vq-submit" class="vq-submit" type="button">Comprobar respuesta</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://player.vimeo.com/api/player.js"></script>
+    <script>
+        (function () {
+            // ---------- CONFIGURA TUS CHECKPOINTS AQUÍ ----------
+            var CHECKPOINTS = [
+                {
+                    time: 270, // 4 min 30 seg (4*60 + 30 = 270)
+                    question: "¿Cuál es la capital de Colombia?",
+                    options: ["Medellín", "Bogotá", "Cali"],
+                    correctIndex: 1,
+                    done: false
+                }
+                // Agrega más objetos aquí si necesitas más pausas.
+            ];
+            // ------------------------------------------------------
+
+            var iframe = document.getElementById('vq-player');
+            var player = new Vimeo.Player(iframe);
+            var overlay = document.getElementById('vq-overlay');
+            var questionEl = document.getElementById('vq-question');
+            var optionsEl = document.getElementById('vq-options');
+            var submitBtn = document.getElementById('vq-submit');
+            var feedbackEl = document.getElementById('vq-feedback');
+
+            var activeCheckpoint = null;
+            var selectedIndex = null;
+
+            function showQuiz(checkpoint) {
+                activeCheckpoint = checkpoint;
+                selectedIndex = null;
+                feedbackEl.hidden = true;
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Comprobar respuesta";
+                questionEl.textContent = checkpoint.question;
+
+                optionsEl.innerHTML = "";
+                checkpoint.options.forEach(function (opt, idx) {
+                    var label = document.createElement('label');
+                    label.className = 'vq-option';
+                    label.innerHTML =
+                        '<input type="radio" name="vq-choice" value="' + idx + '"> ' +
+                        '<span>' + opt + '</span>';
+                    label.addEventListener('click', function () {
+                        document.querySelectorAll('.vq-option').forEach(function (el) {
+                            el.classList.remove('vq-selected');
+                        });
+                        label.classList.add('vq-selected');
+                        selectedIndex = idx;
+                    });
+                    optionsEl.appendChild(label);
+                });
+
+                overlay.hidden = false;
+            }
+
+            function hideQuiz() {
+                overlay.hidden = true;
+                activeCheckpoint = null;
+            }
+
+            submitBtn.addEventListener('click', function () {
+                if (selectedIndex === null) {
+                    feedbackEl.hidden = false;
+                    feedbackEl.className = 'vq-feedback vq-err';
+                    feedbackEl.textContent = "Selecciona una opción antes de continuar.";
+                    return;
+                }
+
+                if (selectedIndex === activeCheckpoint.correctIndex) {
+                    feedbackEl.hidden = false;
+                    feedbackEl.className = 'vq-feedback vq-ok';
+                    feedbackEl.textContent = "¡Correcto! Reanudando el video...";
+                    submitBtn.disabled = true;
+                    activeCheckpoint.done = true;
+                    setTimeout(function () {
+                        hideQuiz();
+                        player.play();
+                    }, 700);
+                } else {
+                    feedbackEl.hidden = false;
+                    feedbackEl.className = 'vq-feedback vq-err';
+                    feedbackEl.textContent = "Respuesta incorrecta, intenta de nuevo.";
+                }
+            });
+
+            // ⬇️ CORRECCIÓN CLAVE:
+            // Antes de enganchar los listeners, esperamos a que el player esté
+            // listo y forzamos el tiempo a 0. Esto evita que el "seguir viendo"
+            // que Vimeo guarda en el navegador dispare el quiz apenas carga la
+            // página (porque de lo contrario el primer timeupdate/seeked ya
+            // llega con seconds > checkpoint.time).
+            player.ready()
+                .then(function () {
+                    return player.setCurrentTime(0);
+                })
+                .then(function () {
+                    attachListeners();
+                })
+                .catch(function (err) {
+                    // Si algo falla al resetear el tiempo, igual enganchamos los
+                    // listeners para que el widget no quede inutilizable.
+                    console.warn('No se pudo resetear el tiempo del video:', err);
+                    attachListeners();
+                });
+
+            function attachListeners() {
+                // Revisa el avance del video y dispara el quiz al llegar al checkpoint
+                player.on('timeupdate', function (data) {
+                    var seconds = data.seconds;
+                    for (var i = 0; i < CHECKPOINTS.length; i++) {
+                        var cp = CHECKPOINTS[i];
+                        if (!cp.done && seconds >= cp.time) {
+                            player.pause();
+                            showQuiz(cp);
+                            break;
+                        }
+                    }
+                });
+
+                // Evita que el usuario adelante manualmente la barra saltándose un checkpoint pendiente
+                player.on('seeked', function (data) {
+                    var seconds = data.seconds;
+                    for (var i = 0; i < CHECKPOINTS.length; i++) {
+                        var cp = CHECKPOINTS[i];
+                        if (!cp.done && seconds > cp.time) {
+                            player.setCurrentTime(cp.time);
+                            break;
+                        }
+                    }
+                });
+            }
+        })();
+    </script>
+
+</body>
+
+</html>
